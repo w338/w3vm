@@ -208,6 +208,9 @@ fn it_lexes_floats() {
     assert_eq!(Lexer::new("1.0", &mut tab).next(), Some(Token::Number(val::Number::F64(1.0))));
     assert_eq!(Lexer::new("1e0", &mut tab).next(), Some(Token::Number(val::Number::F64(1.0))));
     assert_eq!(Lexer::new("1.e0", &mut tab).next(), Some(Token::Number(val::Number::F64(1.0))));
+    assert_eq!(Lexer::new("1_e0", &mut tab).next(), Some(Token::Number(val::Number::F64(1.0))));
+    // This one is not lexed by Rust. Should we allow it?
+    assert_eq!(Lexer::new("0_e0", &mut tab).next(), Some(Token::Number(val::Number::F64(0.0))));
 }
 
 #[test]
@@ -233,12 +236,17 @@ fn it_lexes_binary() {
 
 #[test]
 fn it_lexes_weird_combinations() {
+    // All of the ones starting with 0 here are not lexed by Rust. Should we allow them?
     let mut tab = symbol::Table::new();
     let e = tab.intern("e");
+    let tokene_ver = tab.intern("e_ver");
     let ever = tab.intern("ever");
     let x = tab.intern("x");
+    let x_x = tab.intern("x_x");
     let o = tab.intern("o");
+    let o_o = tab.intern("o_o");
     let b = tab.intern("b");
+    let b_b = tab.intern("b_b");
     let big = tab.intern("big");
     {
         let mut lexer = Lexer::new("1e", &mut tab);
@@ -251,9 +259,19 @@ fn it_lexes_weird_combinations() {
         assert_eq!(lexer.next(), Some(Token::Identifier(ever)));
     }
     {
+        let mut lexer = Lexer::new("1e_ver", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(1))));
+        assert_eq!(lexer.next(), Some(Token::Identifier(tokene_ver)));
+    }
+    {
         let mut lexer = Lexer::new("0x", &mut tab);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(x)));
+    }
+    {
+        let mut lexer = Lexer::new("0x_x", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
+        assert_eq!(lexer.next(), Some(Token::Identifier(x_x)));
     }
     {
         let mut lexer = Lexer::new("0o", &mut tab);
@@ -261,9 +279,19 @@ fn it_lexes_weird_combinations() {
         assert_eq!(lexer.next(), Some(Token::Identifier(o)));
     }
     {
+        let mut lexer = Lexer::new("0o_o", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
+        assert_eq!(lexer.next(), Some(Token::Identifier(o_o)));
+    }
+    {
         let mut lexer = Lexer::new("0b", &mut tab);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(b)));
+    }
+    {
+        let mut lexer = Lexer::new("0b_b", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
+        assert_eq!(lexer.next(), Some(Token::Identifier(b_b)));
     }
     {
         let mut lexer = Lexer::new("0big", &mut tab);
