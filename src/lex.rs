@@ -94,7 +94,7 @@ impl<'a> Iterator for Lexer<'a> {
                 let mut last_index;
                 loop {
                     let (index, char) = self.tick();
-                    if !char.is_digit(10) {
+                    if !char.is_digit(10) && char != '_' {
                         self.untick(index, char);
                         last_index = index;
                         break;
@@ -108,7 +108,7 @@ impl<'a> Iterator for Lexer<'a> {
                     saw_decimal = true;
                     loop {
                         let (index, char) = self.tick();
-                        if !char.is_digit(10) {
+                        if !char.is_digit(10) && char != '_' {
                             self.untick(index, char);
                             last_index = index;
                             break;
@@ -127,7 +127,7 @@ impl<'a> Iterator for Lexer<'a> {
                         saw_exponent = true;
                         loop {
                             let (index, char) = self.tick();
-                            if !char.is_digit(10) {
+                            if !char.is_digit(10) && char != '_' {
                                 self.untick(index, char);
                                 last_index = index;
                                 break;
@@ -140,7 +140,8 @@ impl<'a> Iterator for Lexer<'a> {
                 if !saw_exponent {
                     self.untick(index, char);
                 }
-                let s = self.slice(first_index, last_index);
+
+                let s: String = self.slice(first_index, last_index).chars().filter(|&c| c != '_').collect();
                 // TODO(w338): Implement number tags.
                 if saw_exponent || saw_decimal {
                     return Some(Token::Number(val::Number::F64(s.parse().unwrap())));
@@ -159,9 +160,9 @@ impl<'a> Iterator for Lexer<'a> {
                     if third_char.is_digit(radix) {
                         loop {
                             let (index, char) = self.tick();
-                            if !char.is_digit(radix) {
-                                let s = self.slice(third_index, index);
-                                return Some(Token::Number(val::Number::U64(u64::from_str_radix(s, radix).unwrap())));
+                            if !char.is_digit(radix) && char != '_' {
+                                let s: String = self.slice(third_index, index).chars().filter(|&c| c != '_').collect();
+                                return Some(Token::Number(val::Number::U64(u64::from_str_radix(&s, radix).unwrap())));
                             }
                         }
                     }
@@ -198,6 +199,7 @@ fn it_lexes_decimals() {
     assert_eq!(Lexer::new("0", &mut tab).next(), Some(Token::Number(val::Number::I64(0))));
     assert_eq!(Lexer::new("0 ", &mut tab).next(), Some(Token::Number(val::Number::I64(0))));
     assert_eq!(Lexer::new("99", &mut tab).next(), Some(Token::Number(val::Number::I64(99))));
+    assert_eq!(Lexer::new("1_000", &mut tab).next(), Some(Token::Number(val::Number::I64(1000))));
 }
 
 #[test]
