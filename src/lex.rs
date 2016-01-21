@@ -9,6 +9,8 @@ pub enum Token {
     Identifier(symbol::Symbol),
     Number(val::Number),
     String(Arc<String>),
+    BrokenString(String),
+    Error(String),
     Whitespace(symbol::Symbol),
     Operator(symbol::Symbol)
 }
@@ -171,6 +173,81 @@ impl<'a> Iterator for Lexer<'a> {
                 }
             }
             return Some(Token::Number(val::Number::I64(digit as i64)));
+        } else if first_char == '"' {
+            // We have a string.
+            let mut output;
+            if first_index + 1 < self.source.len() {
+                if let Some(len_guess) = self.source[(first_index + 1)..].find('"') {
+                    output = String::with_capacity(len_guess);
+                } else {
+                    output = String::new();
+                }
+            } else {
+                return Some(Token::BrokenString(self.source[first_index..].to_owned()));
+            }
+            loop {
+                let (index, char) = self.tick();
+                if char == '\0' {
+                    return Some(Token::BrokenString(self.slice(first_index, index).to_owned()));
+                }
+                if char == '\\' {
+                    let (index, char) = self.tick();
+                    if char == '\0' {
+                        return Some(Token::BrokenString(self.slice(first_index, index).to_owned()));
+                    } else if char == 'n' {
+                        output.push('\n');
+                    } else if char == 't' {
+                        output.push('\t');
+                    } else if char == '\\' {
+                        output.push('\\');
+                    } else if char == '"' {
+                        output.push('"');
+                    } else if char == 'x' {
+                        let (_, first_hex) = self.tick();
+                        let (_, second_hex) = self.tick();
+                        match (first_hex.to_digit(16), second_hex.to_digit(16)) {
+                            (Some(first), Some(second)) => {
+                                if let Some(c) = ::std::char::from_u32(first * 16 + second) {
+                                    output.push(c);
+                                } else {
+                                    return Some(Token::Error("this form of character escape may only be used with characters in the range [\\x00-\\x7f]".to_owned()));
+                                }
+                            },
+                            _ => {
+                                return Some(Token::Error("numeric character escape is too short".to_owned()));
+                            }
+                        }
+                    } else if char == 'u' {
+                        let (open_brace_index, open_brace) = self.tick();
+                        if open_brace != '{' {
+                            return Some(Token::Error("incorrect unicode escape sequence".to_owned()));
+                        }
+                        let mut end_hex_index = open_brace_index;
+                        for i in 0..8 {
+                            let (index, char) = self.tick();
+                            if char == '}' {
+                                end_hex_index = index;
+                            } else if i == 7 {
+                                return Some(Token::Error(
+                                        "overlong unicode escape (can have at most 6 hex digits)".to_owned()));
+                            } else if !char.is_digit(16) {
+                                return Some(Token::Error(format!("invalid character in unicode escape: {}", char)));
+                            }
+                        }
+                        let hex = self.slice(open_brace_index + 1, end_hex_index);
+                        let code_point = u32::from_str_radix(hex, 16).unwrap();
+                        if let Some(c) = ::std::char::from_u32(code_point) {
+                            output.push(c);
+                        } else {
+                            return Some(Token::Error("invalid unicode character escape".to_owned()));
+                        }
+                    }
+                } else if char == '"' {
+                    return Some(Token::String(Arc::new(output)));
+                } else {
+                    output.push(char);
+                }
+            }
         } else {
             return None;
         }
@@ -225,6 +302,12 @@ fn it_lexes_octals() {
     let mut tab = symbol::Table::new();
     assert_eq!(Lexer::new("0o1", &mut tab).next(), Some(Token::Number(val::Number::U64(1))));
     assert_eq!(Lexer::new("0o1 ", &mut tab).next(), Some(Token::Number(val::Number::U64(1))));
+}
+
+#[test]
+fn it_lexes_strings() {
+    let mut tab = symbol::Table::new();
+    assert_eq!(Lexer::new("\"test\"", &mut tab).next(), Some(Token::String(Arc::new("test".to_owned()))));
 }
 
 #[test]
