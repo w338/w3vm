@@ -1,7 +1,8 @@
 use std::collections::{HashMap};
 use std::sync::Arc;
+use std::hash::{Hash, Hasher};
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct Symbol {
     source: Arc<String>,
     #[cfg(debug)]
@@ -31,6 +32,12 @@ impl Symbol {
 
     #[cfg(not(debug))]
     fn check_table(&self, _other: &Self) {
+    }
+}
+
+impl Hash for Symbol {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        state.write_usize(&*self.source as *const String as usize)
     }
 }
 
