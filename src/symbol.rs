@@ -37,7 +37,7 @@ impl Symbol {
 impl PartialEq for Symbol {
     fn eq(&self, other: &Self) -> bool {
         self.check_table(other);
-        (&*self.source as *const _) == (&*other.source as *const _)
+        (&*self.source as *const String) == (&*other.source as *const String)
     }
 }
 
@@ -67,5 +67,7 @@ impl Table {
 #[test]
 fn it_interns() {
     let mut tab = Table::new();
+    let mut tab2 = Table::new();
     assert_eq!(tab.intern("test"), tab.intern(&"test".to_owned()));
+    assert!(tab.intern("test") != tab2.intern("test"));
 }
