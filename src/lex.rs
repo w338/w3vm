@@ -175,25 +175,26 @@ impl<'a> Iterator for Lexer<'a> {
             return Some(Token::Number(val::Number::I64(digit as i64)));
         } else if first_char == '"' {
             // We have a string.
+            let second_index = first_index + 1;
             let mut output;
-            if first_index + 1 < self.source.len() {
-                if let Some(len_guess) = self.source[(first_index + 1)..].find('"') {
+            if second_index < self.source.len() {
+                if let Some(len_guess) = self.source[(second_index)..].find('"') {
                     output = String::with_capacity(len_guess);
                 } else {
                     output = String::new();
                 }
             } else {
-                return Some(Token::BrokenString(self.source[first_index..].to_owned()));
+                return Some(Token::BrokenString("".to_owned()));
             }
             loop {
                 let (index, char) = self.tick();
                 if char == '\0' {
-                    return Some(Token::BrokenString(self.slice(first_index, index).to_owned()));
+                    return Some(Token::BrokenString(self.slice(second_index, index).to_owned()));
                 }
                 if char == '\\' {
                     let (index, char) = self.tick();
                     if char == '\0' {
-                        return Some(Token::BrokenString(self.slice(first_index, index).to_owned()));
+                        return Some(Token::BrokenString(self.slice(second_index, index).to_owned()));
                     } else if char == 'n' {
                         output.push('\n');
                     } else if char == 't' {
@@ -227,7 +228,8 @@ impl<'a> Iterator for Lexer<'a> {
                             let (index, char) = self.tick();
                             if char == '}' {
                                 end_hex_index = index;
-                            } else if i == 7 {
+                                break;
+                            } else if i == 6 {
                                 return Some(Token::Error(
                                         "overlong unicode escape (can have at most 6 hex digits)".to_owned()));
                             } else if !char.is_digit(16) {
@@ -308,6 +310,48 @@ fn it_lexes_octals() {
 fn it_lexes_strings() {
     let mut tab = symbol::Table::new();
     assert_eq!(Lexer::new("\"test\"", &mut tab).next(), Some(Token::String(Arc::new("test".to_owned()))));
+    {
+        let mut lexer = Lexer::new("\"", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::BrokenString("".to_owned())));
+    }
+    {
+        let mut lexer = Lexer::new("\"a", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::BrokenString("a".to_owned())));
+    }
+    {
+        let mut lexer = Lexer::new("\"\n\"", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::String(Arc::new("\n".to_owned()))));
+    }
+    {
+        let mut lexer = Lexer::new("\"\t\"", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::String(Arc::new("\t".to_owned()))));
+    }
+    {
+        let mut lexer = Lexer::new("\"\\u{0}\"", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::String(Arc::new("\u{0}".to_owned()))));
+    }
+    {
+        let mut lexer = Lexer::new("\"\\x00\"", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::String(Arc::new("\x00".to_owned()))));
+    }
+    {
+        let mut lexer = Lexer::new("\"\\u{1234}\"", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::String(Arc::new("\u{1234}".to_owned()))));
+    }
+    {
+        let mut lexer = Lexer::new("\"\\u{000000}\"", &mut tab);
+        assert_eq!(lexer.next(), Some(Token::String(Arc::new("\x00".to_owned()))));
+    }
+    {
+        let mut lexer = Lexer::new("\"\\u{0000000}\"", &mut tab);
+        assert_eq!(lexer.next(),
+                   Some(Token::Error("overlong unicode escape (can have at most 6 hex digits)".to_owned())));
+    }
+    {
+        let mut lexer = Lexer::new("\"\\u{00000000}\"", &mut tab);
+        assert_eq!(lexer.next(),
+                   Some(Token::Error("overlong unicode escape (can have at most 6 hex digits)".to_owned())));
+    }
 }
 
 #[test]
