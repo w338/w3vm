@@ -10,7 +10,7 @@ pub struct Symbol {
 
 impl Symbol {
     #[cfg(debug)]
-    pub fn from_str(source: &str, table: *const Table) -> Self {
+    pub fn from_str_table(source: &str, table: *const Table) -> Self {
         Symbol {
             source: Arc::new(source.to_owned()),
             table: table
@@ -18,7 +18,7 @@ impl Symbol {
     }
 
     #[cfg(not(debug))]
-    pub fn from_str(source: &str, _table: *const Table) -> Self {
+    pub fn from_str_table(source: &str, _table: *const Table) -> Self {
         Symbol {
             source: Arc::new(source.to_owned())
         }
@@ -58,7 +58,7 @@ impl Table {
         if let Some(symbol) = self.symbols.get(source) {
             return symbol.clone()
         }
-        let new_symbol = Symbol::from_str(source, self);
+        let new_symbol = Symbol::from_str_table(source, self);
         self.symbols.insert(source.to_owned().into_boxed_str(), new_symbol.clone());
         new_symbol
     }
