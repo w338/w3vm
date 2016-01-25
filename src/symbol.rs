@@ -62,6 +62,10 @@ impl Table {
         self.symbols.insert(source.to_owned().into_boxed_str(), new_symbol.clone());
         new_symbol
     }
+
+    pub fn is_interned(&self, source: &str) -> bool {
+        self.symbols.contains_key(source)
+    }
 }
 
 #[test]
