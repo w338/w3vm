@@ -11,6 +11,8 @@ pub enum Token {
     String(Arc<String>),
     BrokenString(String),
     Error(String),
+    Comment(String),
+    BrokenComment(String),
     Whitespace(symbol::Symbol),
     Operator(symbol::Symbol)
 }
@@ -250,9 +252,42 @@ impl<'a> Iterator for Lexer<'a> {
                     output.push(char);
                 }
             }
-        } else {
-            return None;
+        } 
+
+        if first_char == '/' {
+            let (second_index, second_char) = self.tick();
+            if second_char == '*' {
+                // We have a block comment.
+                let mut depth = 1;
+                let mut last_index = second_index;
+                loop {
+                    let (_, char) = self.tick();
+                    if char == '/' {
+                        let (_, c) = self.tick();
+                        if c == '*' {
+                            depth += 1;
+                        }
+                    } else if char == '*' {
+                        let (i, c) = self.tick();
+                        if c == '/' {
+                            depth -= 1;
+                            last_index = i - 1;
+                        }
+                    } else if char == '\0' {
+                        return Some(Token::BrokenComment(self.source[first_index + 2..].to_owned()));
+                    }
+                    if depth == 0 {
+                        return Some(Token::Comment(self.slice(first_index + 2, last_index).to_owned()))
+                    }
+                }
+            } else {
+                self.untick(second_index, second_char);
+            }
         }
+
+        // None of the previous, must be EOF.
+        assert!(first_char == '\0');
+        return None;
     }
 }
 
@@ -425,4 +460,12 @@ fn it_lexes_weird_combinations() {
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(big)));
     }
+}
+
+#[test]
+fn it_lexes_comments() {
+    let mut tab = symbol::Table::new();
+    assert_eq!(Lexer::new("/*test*/", &mut tab).next(), Some(Token::Comment("test".to_owned())));
+    assert_eq!(Lexer::new("/*", &mut tab).next(), Some(Token::BrokenComment("".to_owned())));
+    assert_eq!(Lexer::new("/**/", &mut tab).next(), Some(Token::Comment("".to_owned())));
 }
