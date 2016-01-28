@@ -21,7 +21,8 @@ pub struct Lexer<'a> {
     source: &'a str,
     chars: ::std::str::CharIndices<'a>,
     reversed: Vec<(usize, char)>,
-    table: &'a mut symbol::Table
+    pub table: &'a mut symbol::Table,
+    operators: Vec<String>
 }
 
 impl<'a> Lexer<'a> {
@@ -30,7 +31,8 @@ impl<'a> Lexer<'a> {
             source: source,
             chars: source.char_indices(),
             reversed: Vec::new(),
-            table: table
+            table: table,
+            operators: Vec::new()
         }
     }
 }
@@ -62,6 +64,16 @@ impl<'a> Lexer<'a> {
     fn slice_intern(&mut self, start_index: usize, end_index: usize) -> symbol::Symbol {
         let s = self.slice(start_index, end_index);
         self.intern(s)
+    }
+
+    fn add_operator(&mut self, op: &str) {
+        let s = op.to_owned();
+        match self.operators.binary_search(&s) {
+            Ok(_) => { /* Done. */ },
+            Err(index) => {
+                self.operators.insert(index, s);
+            }
+        }
     }
 }
 
@@ -288,6 +300,41 @@ impl<'a> Iterator for Lexer<'a> {
             }
         }
 
+        {
+            let (end_index, char) = self.tick();
+            self.untick(end_index, char);
+            self.untick(first_index, first_char);
+            let op_prefix = self.slice(first_index, end_index);
+            let index = match self.operators.binary_search(&op_prefix.to_owned()) {
+                Ok(index) => index,
+                Err(index) => index
+            };
+            let mut max_op_len = 0;
+            let mut best_operator = self.table.intern("");
+            let rest_of_source = &self.source[first_index..];
+            for operator in self.operators[index..].iter() {
+                if operator.len() < max_op_len {
+                    break;
+                }
+                if rest_of_source.starts_with(operator) {
+                    if operator.len() > max_op_len {
+                        max_op_len = operator.len();
+                        best_operator = self.table.intern(operator);
+                    }
+                }
+            }
+            loop {
+                let (index, char) = self.tick();
+                if index == first_index + max_op_len {
+                    self.untick(index, char);
+                    break;
+                }
+            }
+            if max_op_len > 0 {
+                return Some(Token::Operator(best_operator));
+            }
+        }
+
         // None of the previous, must be EOF.
         assert!(first_char == '\0');
         return None;
@@ -471,4 +518,58 @@ fn it_lexes_comments() {
     assert_eq!(Lexer::new("/*test*/", &mut tab).next(), Some(Token::Comment("test".to_owned())));
     assert_eq!(Lexer::new("/*", &mut tab).next(), Some(Token::BrokenComment("".to_owned())));
     assert_eq!(Lexer::new("/**/", &mut tab).next(), Some(Token::Comment("".to_owned())));
+}
+
+
+#[test]
+fn it_lexes_operators() {
+    let mut tab = symbol::Table::new();
+    let plus = tab.intern("+");
+    let plus_plus = tab.intern("++");
+    let plus_minus = tab.intern("+-");
+    let space = tab.intern(" ");
+    let mut lexer = Lexer::new("+ ++ +- +++", &mut tab);
+    lexer.add_operator("+");
+    lexer.add_operator("++");
+    lexer.add_operator("+-");
+    assert_eq!(lexer.next(), Some(Token::Operator(plus.clone())));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Operator(plus_plus.clone())));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Operator(plus_minus.clone())));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Operator(plus_plus.clone())));
+    assert_eq!(lexer.next(), Some(Token::Operator(plus.clone())));
+    assert_eq!(lexer.next(), None);
+}
+
+#[test]
+fn it_lexes_mixed_sequences() {
+    let mut tab = symbol::Table::new();
+    let plus = tab.intern("+");
+    let plus_plus = tab.intern("++");
+    let minus = tab.intern("-");
+    let space = tab.intern(" ");
+    let a = tab.intern("a");
+    let test = tab.intern("test");
+    let mut lexer = Lexer::new("test a ++ + 1 - 1.0e3 +", &mut tab);
+    lexer.add_operator("+");
+    lexer.add_operator("-");
+    lexer.add_operator("++");
+    assert_eq!(lexer.next(), Some(Token::Identifier(test.clone())));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Identifier(a.clone())));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Operator(plus_plus.clone())));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Operator(plus.clone())));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(1))));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Operator(minus.clone())));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Number(val::Number::F64(1e3))));
+    assert_eq!(lexer.next(), Some(Token::Whitespace(space.clone())));
+    assert_eq!(lexer.next(), Some(Token::Operator(plus.clone())));
+    assert_eq!(lexer.next(), None);
 }
