@@ -74,6 +74,7 @@ impl<'a> Iterator for Lexer<'a> {
             loop {
                 let (index, char) = self.tick();
                 if !UnicodeXID::is_xid_continue(char) {
+                    self.untick(index, char);
                     return Some(Token::Identifier(self.slice_intern(first_index, index)));
                 }
             }
@@ -82,6 +83,7 @@ impl<'a> Iterator for Lexer<'a> {
             loop {
                 let (index, char) = self.tick();
                 if !char.is_whitespace() {
+                    self.untick(index, char);
                     return Some(Token::Whitespace(self.slice_intern(first_index, index)));
                 }
             }
@@ -174,6 +176,7 @@ impl<'a> Iterator for Lexer<'a> {
                     self.untick(second_index, second_char);
                 }
             }
+            self.untick(second_index, second_char);
             return Some(Token::Number(val::Number::I64(digit as i64)));
         } else if first_char == '"' {
             // We have a string.
