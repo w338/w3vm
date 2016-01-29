@@ -1,0 +1,49 @@
+:hello "Hello, World" def
+
+:main [
+  hello print
+] def
+
+main
+
+/* Steps in evaluation:
+[<code> <error>] [:hello ...] {}
+ ^fp              ^pc
+
+[<code> <error> :hello] ["Hello, World" ...] {}
+ ^fp                     ^pc
+
+[<code> <error> :hello "Hello, World"] [def ...] {}
+ ^fp                                    ^pc
+
+[<code> <error>] [:main ...] {hello: Var(0, "Hello, World")}
+ ^fp              ^pc
+
+[<code> <error> :main] [[ ...] {hello: "Hello, World"}
+ ^fp                    ^pc
+
+[<code> <error> :main [Var(0, "Hello, World") Var(0, <fn print>)]] [def ...] {hello: "Hello, World"}
+ ^fp                                                                ^pc
+
+[<code> <error> ] [main] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
+ ^fp               ^pc
+
+[<code> <error> 0 main nil] [Var(0, "Hello, World") Var(0, <fn print>)] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
+                  ^fp        ^pc
+
+[<code> <error> 0 main nil "Hello, World"] [Var(0, <fn print>)] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
+                  ^fp                       ^pc
+
+[<code> <error> 0 main nil] [] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
+                  ^fp        ^pc
+
+[<code> <error>] [] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
+ ^fp              ^pc
+
+[<code> <error>] [] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
+ ^fp              ^pc
+
+[] [] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
+ ^fp^pc
+
+*/
