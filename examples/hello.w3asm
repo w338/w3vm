@@ -1,49 +1,66 @@
-:hello "Hello, World" def
+main return
 
-:main [
+hello: "Hello, World"
+
+main: {
   hello print
-] def
-
-main
+}
 
 /* Steps in evaluation:
-[<code> <error>] [:hello ...] {}
+
+Types:
+Vector. A vector is an indexable sequence, which new items can be pushed onto.
+A pointer is a reference to a vector, as well as a starting index into the
+vector. Note that vector pointers don't have a length attached to them, so
+they're not really like slices (there are no slices in this language).
+
+Strings. For now, these act like atomic elements.
+
+Symbols. For now, these act like atomic elements.
+
+Numbers. Implement the usual arithmetic operators.
+
+Verbs. These are builtin operators or external functions.
+
+Functions are also vectors, so there is no separate type for them.
+
+First, we need to bind all the variables. hello and main are bound in the root
+scope, then hello and print are bound to hello in the root scope and print in
+the builtins, respectively. Here are the steps to bind:
+
+Lex, to create a sequence of tokens.
+Create tree, by matching up pairs of [], {}, and ().
+For each node in the tree, create a vector.
+  Some syntactic elements become entries:
+    Most operators.
+    Literals.
+    Identifiers.
+  Some don't:
+    Whitespace
+    Comments
+    Location labels (identifiers followed by the ':' operator).
+    Variable labels (identifiers preceded by the '$' operator).
+For each vector, create location labels. These are (symbol, index) mappings.
+Then, for location label symbol, look in the current vector for it. If it's not
+there, look in the root, etc. When found, create a pointer to the label.
+
+Traverse the lexical and vector trees together to perform variable label
+expansion. This involves simulating stack motions, and hasn't been determined
+at this time.
+
+Then, we need to evaluate. We start at the beginning, and execute as follows:
+
+/* Steps in evaluation:
+[<code> <error>] [main return] {}
  ^fp              ^pc
+  \_____________   |
+                \  /
+[<code> <error> 0 1 main nil] [hello print] {}
+                    ^fp        ^pc
 
-[<code> <error> :hello] ["Hello, World" ...] {}
- ^fp                     ^pc
+[<code> <error> 1 1 main nil "Hello, World"] [hello print] {}
+                    ^fp                             ^pc
 
-[<code> <error> :hello "Hello, World"] [def ...] {}
- ^fp                                    ^pc
-
-[<code> <error>] [:main ...] {hello: Var(0, "Hello, World")}
- ^fp              ^pc
-
-[<code> <error> :main] [[ ...] {hello: "Hello, World"}
- ^fp                    ^pc
-
-[<code> <error> :main [Var(0, "Hello, World") Var(0, <fn print>)]] [def ...] {hello: "Hello, World"}
- ^fp                                                                ^pc
-
-[<code> <error> ] [main] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
- ^fp               ^pc
-
-[<code> <error> 0 main nil] [Var(0, "Hello, World") Var(0, <fn print>)] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
-                  ^fp        ^pc
-
-[<code> <error> 0 main nil "Hello, World"] [Var(0, <fn print>)] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
-                  ^fp                       ^pc
-
-[<code> <error> 0 main nil] [] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
-                  ^fp        ^pc
-
-[<code> <error>] [] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
- ^fp              ^pc
-
-[<code> <error>] [] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
- ^fp              ^pc
-
-[] [] {hello: "Hello, World", main: [Var(0, "Hello, World") Var(0, <fn print>)]}
- ^fp^pc
-
-*/
+[<code> <error>] [main return] {}
+ ^fp                   ^pc
+ */
