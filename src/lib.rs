@@ -2,3 +2,4 @@
 
 mod symbol;
 mod val;
+mod dfa;
