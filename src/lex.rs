@@ -22,17 +22,17 @@ pub struct Lexer<'a> {
     chars: ::std::str::CharIndices<'a>,
     reversed: Vec<(usize, char)>,
     pub table: &'a mut symbol::Table,
-    operators: Vec<String>
+    operators: &'a mut Vec<String>
 }
 
 impl<'a> Lexer<'a> {
-    fn new(source: &'a str, table: &'a mut symbol::Table) -> Self {
+    fn new(source: &'a str, table: &'a mut symbol::Table, operators: &'a mut Vec<String>) -> Self {
         Lexer {
             source: source,
             chars: source.char_indices(),
             reversed: Vec::new(),
             table: table,
-            operators: Vec::new()
+            operators: operators
         }
     }
 }
@@ -344,96 +344,103 @@ impl<'a> Iterator for Lexer<'a> {
 #[test]
 fn it_lexes_identifiers() {
     let mut tab = symbol::Table::new();
+    let mut ops = Vec::new();
     let next = tab.intern("test");
-    assert_eq!(Lexer::new("test", &mut tab).next(), Some(Token::Identifier(next.clone())));
-    assert_eq!(Lexer::new("test ", &mut tab).next(), Some(Token::Identifier(next)));
+    assert_eq!(Lexer::new("test", &mut tab, &mut ops).next(), Some(Token::Identifier(next.clone())));
+    assert_eq!(Lexer::new("test ", &mut tab, &mut ops).next(), Some(Token::Identifier(next)));
 }
 
 #[test]
 fn it_lexes_whitespace() {
     let mut tab = symbol::Table::new();
+    let mut ops = Vec::new();
     let next = tab.intern("    ");
-    assert_eq!(Lexer::new("    ", &mut tab).next(), Some(Token::Whitespace(next.clone())));
-    assert_eq!(Lexer::new("    test", &mut tab).next(), Some(Token::Whitespace(next)));
+    assert_eq!(Lexer::new("    ", &mut tab, &mut ops).next(), Some(Token::Whitespace(next.clone())));
+    assert_eq!(Lexer::new("    test", &mut tab, &mut ops).next(), Some(Token::Whitespace(next)));
 }
 
 #[test]
 fn it_lexes_decimals() {
     let mut tab = symbol::Table::new();
-    assert_eq!(Lexer::new("0", &mut tab).next(), Some(Token::Number(val::Number::I64(0))));
-    assert_eq!(Lexer::new("0 ", &mut tab).next(), Some(Token::Number(val::Number::I64(0))));
-    assert_eq!(Lexer::new("99", &mut tab).next(), Some(Token::Number(val::Number::I64(99))));
-    assert_eq!(Lexer::new("1_000", &mut tab).next(), Some(Token::Number(val::Number::I64(1000))));
+    let mut ops = Vec::new();
+    assert_eq!(Lexer::new("0", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::I64(0))));
+    assert_eq!(Lexer::new("0 ", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::I64(0))));
+    assert_eq!(Lexer::new("99", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::I64(99))));
+    assert_eq!(Lexer::new("1_000", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::I64(1000))));
 }
 
 #[test]
 fn it_lexes_floats() {
     let mut tab = symbol::Table::new();
-    assert_eq!(Lexer::new("1.0", &mut tab).next(), Some(Token::Number(val::Number::F64(1.0))));
-    assert_eq!(Lexer::new("1e0", &mut tab).next(), Some(Token::Number(val::Number::F64(1.0))));
-    assert_eq!(Lexer::new("1.e0", &mut tab).next(), Some(Token::Number(val::Number::F64(1.0))));
-    assert_eq!(Lexer::new("1_e0", &mut tab).next(), Some(Token::Number(val::Number::F64(1.0))));
+    let mut ops = Vec::new();
+    assert_eq!(Lexer::new("1.0", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::F64(1.0))));
+    assert_eq!(Lexer::new("1e0", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::F64(1.0))));
+    assert_eq!(Lexer::new("1.e0", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::F64(1.0))));
+    assert_eq!(Lexer::new("1_e0", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::F64(1.0))));
     // This one is not lexed by Rust. Should we allow it?
-    assert_eq!(Lexer::new("0_e0", &mut tab).next(), Some(Token::Number(val::Number::F64(0.0))));
+    assert_eq!(Lexer::new("0_e0", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::F64(0.0))));
 }
 
 #[test]
 fn it_lexes_hexadecimals() {
     let mut tab = symbol::Table::new();
-    assert_eq!(Lexer::new("0x1", &mut tab).next(), Some(Token::Number(val::Number::U64(1))));
-    assert_eq!(Lexer::new("0x1 ", &mut tab).next(), Some(Token::Number(val::Number::U64(1))));
+    let mut ops = Vec::new();
+    assert_eq!(Lexer::new("0x1", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::U64(1))));
+    assert_eq!(Lexer::new("0x1 ", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::U64(1))));
 }
 
 #[test]
 fn it_lexes_octals() {
     let mut tab = symbol::Table::new();
-    assert_eq!(Lexer::new("0o1", &mut tab).next(), Some(Token::Number(val::Number::U64(1))));
-    assert_eq!(Lexer::new("0o1 ", &mut tab).next(), Some(Token::Number(val::Number::U64(1))));
+    let mut ops = Vec::new();
+    assert_eq!(Lexer::new("0o1", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::U64(1))));
+    assert_eq!(Lexer::new("0o1 ", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::U64(1))));
 }
 
 #[test]
 fn it_lexes_strings() {
     let mut tab = symbol::Table::new();
-    assert_eq!(Lexer::new("\"test\"", &mut tab).next(), Some(Token::String(Arc::new("test".to_owned()))));
+    let mut ops = Vec::new();
+    assert_eq!(Lexer::new("\"test\"", &mut tab, &mut ops).next(), Some(Token::String(Arc::new("test".to_owned()))));
     {
-        let mut lexer = Lexer::new("\"", &mut tab);
+        let mut lexer = Lexer::new("\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::BrokenString("".to_owned())));
     }
     {
-        let mut lexer = Lexer::new("\"a", &mut tab);
+        let mut lexer = Lexer::new("\"a", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::BrokenString("a".to_owned())));
     }
     {
-        let mut lexer = Lexer::new("\"\n\"", &mut tab);
+        let mut lexer = Lexer::new("\"\n\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::String(Arc::new("\n".to_owned()))));
     }
     {
-        let mut lexer = Lexer::new("\"\t\"", &mut tab);
+        let mut lexer = Lexer::new("\"\t\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::String(Arc::new("\t".to_owned()))));
     }
     {
-        let mut lexer = Lexer::new("\"\\u{0}\"", &mut tab);
+        let mut lexer = Lexer::new("\"\\u{0}\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::String(Arc::new("\u{0}".to_owned()))));
     }
     {
-        let mut lexer = Lexer::new("\"\\x00\"", &mut tab);
+        let mut lexer = Lexer::new("\"\\x00\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::String(Arc::new("\x00".to_owned()))));
     }
     {
-        let mut lexer = Lexer::new("\"\\u{1234}\"", &mut tab);
+        let mut lexer = Lexer::new("\"\\u{1234}\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::String(Arc::new("\u{1234}".to_owned()))));
     }
     {
-        let mut lexer = Lexer::new("\"\\u{000000}\"", &mut tab);
+        let mut lexer = Lexer::new("\"\\u{000000}\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::String(Arc::new("\x00".to_owned()))));
     }
     {
-        let mut lexer = Lexer::new("\"\\u{0000000}\"", &mut tab);
+        let mut lexer = Lexer::new("\"\\u{0000000}\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(),
                    Some(Token::Error("overlong unicode escape (can have at most 6 hex digits)".to_owned())));
     }
     {
-        let mut lexer = Lexer::new("\"\\u{00000000}\"", &mut tab);
+        let mut lexer = Lexer::new("\"\\u{00000000}\"", &mut tab, &mut ops);
         assert_eq!(lexer.next(),
                    Some(Token::Error("overlong unicode escape (can have at most 6 hex digits)".to_owned())));
     }
@@ -442,14 +449,16 @@ fn it_lexes_strings() {
 #[test]
 fn it_lexes_binary() {
     let mut tab = symbol::Table::new();
-    assert_eq!(Lexer::new("0b1", &mut tab).next(), Some(Token::Number(val::Number::U64(1))));
-    assert_eq!(Lexer::new("0b1 ", &mut tab).next(), Some(Token::Number(val::Number::U64(1))));
+    let mut ops = Vec::new();
+    assert_eq!(Lexer::new("0b1", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::U64(1))));
+    assert_eq!(Lexer::new("0b1 ", &mut tab, &mut ops).next(), Some(Token::Number(val::Number::U64(1))));
 }
 
 #[test]
 fn it_lexes_weird_combinations() {
     // All of the ones starting with 0 here are not lexed by Rust. Should we allow them?
     let mut tab = symbol::Table::new();
+    let mut ops = Vec::new();
     let e = tab.intern("e");
     let tokene_ver = tab.intern("e_ver");
     let ever = tab.intern("ever");
@@ -461,52 +470,52 @@ fn it_lexes_weird_combinations() {
     let b_b = tab.intern("b_b");
     let big = tab.intern("big");
     {
-        let mut lexer = Lexer::new("1e", &mut tab);
+        let mut lexer = Lexer::new("1e", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(1))));
         assert_eq!(lexer.next(), Some(Token::Identifier(e)));
     }
     {
-        let mut lexer = Lexer::new("1ever", &mut tab);
+        let mut lexer = Lexer::new("1ever", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(1))));
         assert_eq!(lexer.next(), Some(Token::Identifier(ever)));
     }
     {
-        let mut lexer = Lexer::new("1e_ver", &mut tab);
+        let mut lexer = Lexer::new("1e_ver", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(1))));
         assert_eq!(lexer.next(), Some(Token::Identifier(tokene_ver)));
     }
     {
-        let mut lexer = Lexer::new("0x", &mut tab);
+        let mut lexer = Lexer::new("0x", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(x)));
     }
     {
-        let mut lexer = Lexer::new("0x_x", &mut tab);
+        let mut lexer = Lexer::new("0x_x", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(x_x)));
     }
     {
-        let mut lexer = Lexer::new("0o", &mut tab);
+        let mut lexer = Lexer::new("0o", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(o)));
     }
     {
-        let mut lexer = Lexer::new("0o_o", &mut tab);
+        let mut lexer = Lexer::new("0o_o", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(o_o)));
     }
     {
-        let mut lexer = Lexer::new("0b", &mut tab);
+        let mut lexer = Lexer::new("0b", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(b)));
     }
     {
-        let mut lexer = Lexer::new("0b_b", &mut tab);
+        let mut lexer = Lexer::new("0b_b", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(b_b)));
     }
     {
-        let mut lexer = Lexer::new("0big", &mut tab);
+        let mut lexer = Lexer::new("0big", &mut tab, &mut ops);
         assert_eq!(lexer.next(), Some(Token::Number(val::Number::I64(0))));
         assert_eq!(lexer.next(), Some(Token::Identifier(big)));
     }
@@ -515,20 +524,22 @@ fn it_lexes_weird_combinations() {
 #[test]
 fn it_lexes_comments() {
     let mut tab = symbol::Table::new();
-    assert_eq!(Lexer::new("/*test*/", &mut tab).next(), Some(Token::Comment("test".to_owned())));
-    assert_eq!(Lexer::new("/*", &mut tab).next(), Some(Token::BrokenComment("".to_owned())));
-    assert_eq!(Lexer::new("/**/", &mut tab).next(), Some(Token::Comment("".to_owned())));
+    let mut ops = Vec::new();
+    assert_eq!(Lexer::new("/*test*/", &mut tab, &mut ops).next(), Some(Token::Comment("test".to_owned())));
+    assert_eq!(Lexer::new("/*", &mut tab, &mut ops).next(), Some(Token::BrokenComment("".to_owned())));
+    assert_eq!(Lexer::new("/**/", &mut tab, &mut ops).next(), Some(Token::Comment("".to_owned())));
 }
 
 
 #[test]
 fn it_lexes_operators() {
     let mut tab = symbol::Table::new();
+    let mut ops = Vec::new();
     let plus = tab.intern("+");
     let plus_plus = tab.intern("++");
     let plus_minus = tab.intern("+-");
     let space = tab.intern(" ");
-    let mut lexer = Lexer::new("+ ++ +- +++", &mut tab);
+    let mut lexer = Lexer::new("+ ++ +- +++", &mut tab, &mut ops);
     lexer.add_operator("+");
     lexer.add_operator("++");
     lexer.add_operator("+-");
@@ -546,13 +557,14 @@ fn it_lexes_operators() {
 #[test]
 fn it_lexes_mixed_sequences() {
     let mut tab = symbol::Table::new();
+    let mut ops = Vec::new();
     let plus = tab.intern("+");
     let plus_plus = tab.intern("++");
     let minus = tab.intern("-");
     let space = tab.intern(" ");
     let a = tab.intern("a");
     let test = tab.intern("test");
-    let mut lexer = Lexer::new("test a ++ + 1 - 1.0e3 +", &mut tab);
+    let mut lexer = Lexer::new("test a ++ + 1 - 1.0e3 +", &mut tab, &mut ops);
     lexer.add_operator("+");
     lexer.add_operator("-");
     lexer.add_operator("++");
