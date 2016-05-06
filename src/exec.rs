@@ -1,5 +1,7 @@
 use std::result;
 use std::usize;
+use std::iter;
+use std::iter::{once, repeat, Iterator};
 
 const INVALID_REGISTER: usize = usize::MAX;
 
@@ -11,7 +13,7 @@ pub enum Type {
     Uncalculated,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Val {
     Integer(i64),
     Imprecise(f64),
@@ -28,7 +30,7 @@ fn type_of(v: Val) -> Type {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum ExecError {
     Type(Verb, Type),
     Invalid(String),
@@ -56,7 +58,8 @@ pub enum Verb {
     And,
     Or,
     Xor,
-    Not
+    Not,
+    Load
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -67,9 +70,38 @@ pub struct Instruction {
     dst: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Function {
-    instructions: Vec<Instruction>
+    instructions: Vec<Instruction>,
+    constants: Vec<Val>
+}
+
+impl Function {
+    pub fn from_instructions(inst: &[Instruction]) -> Function {
+        Function{
+            instructions: inst.to_vec(),
+            constants: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Frame {
+    reg: Vec<Val>
+}
+
+impl Frame {
+    fn from_size(size: usize) -> Frame {
+        Frame{
+            reg: repeat(Val::Uncalculated).take(size).collect()
+        }
+    }
+
+    fn from_values(values: &[Val]) -> Frame {
+        Frame{
+            reg: values.to_vec()
+        }
+    }
 }
 
 fn run_imprecise_verb(verb: Verb, x: f64, y: f64) -> Val {
@@ -122,61 +154,68 @@ fn run_bool_verb(verb: Verb, x: bool, y: bool) -> Val {
     }
 }
 
-fn run_instructions(instructions: &[Instruction], frame: &mut [Val]) -> Result<()> {
+fn exec_function(func: &Function, frame: &mut Frame) -> Result<()> {
+    let instructions = &func.instructions;
+    let constants = &func.constants;
+    let reg = &mut frame.reg;
     let mut pc = 0;
     while pc < instructions.len() {
         let inst = instructions[pc];
         match inst.verb {
             Verb::Add | Verb::Subtract | Verb::Multiply | Verb::Divide | Verb::Modulus | Verb::Less
-                | Verb::LessEqual | Verb::Greater | Verb::GreaterEqual => match (frame[inst.src],
-                                                                                 frame[inst.tgt]) {
-                (Val::Imprecise(x), Val::Imprecise(y)) => frame[inst.dst] = run_imprecise_verb(inst.verb, x, y),
-                (Val::Imprecise(x), Val::Integer(y)) => frame[inst.dst] = run_imprecise_verb(inst.verb, x, y as f64),
-                (Val::Integer(x), Val::Imprecise(y)) => frame[inst.dst] = run_imprecise_verb(inst.verb, x as f64, y),
+                | Verb::LessEqual | Verb::Greater | Verb::GreaterEqual => match (reg[inst.src],
+                                                                                 reg[inst.tgt]) {
+                (Val::Imprecise(x), Val::Imprecise(y)) => reg[inst.dst] = run_imprecise_verb(inst.verb, x, y),
+                (Val::Imprecise(x), Val::Integer(y)) => reg[inst.dst] = run_imprecise_verb(inst.verb, x, y as f64),
+                (Val::Integer(x), Val::Imprecise(y)) => reg[inst.dst] = run_imprecise_verb(inst.verb, x as f64, y),
                 (Val::Integer(x), Val::Integer(y)) => match run_integer_verb(inst.verb, x, y) {
-                    Ok(res) => frame[inst.dst] = res,
+                    Ok(res) => reg[inst.dst] = res,
                     Err(e) => return Err(e),
                 },
                 (Val::Imprecise(_), y) => return Err(ExecError::Type(inst.verb, type_of(y))),
                 (x, _) => return Err(ExecError::Type(inst.verb, type_of(x)))
             },
-            Verb::Not => match (frame[inst.src], inst.tgt) {
-                (Val::Integer(x), INVALID_REGISTER) => frame[inst.dst] = Val::Integer(!x),
-                (Val::Bool(x), INVALID_REGISTER) => frame[inst.dst] = Val::Bool(!x),
+            Verb::Not => match (reg[inst.src], inst.tgt) {
+                (Val::Integer(x), INVALID_REGISTER) => reg[inst.dst] = Val::Integer(!x),
+                (Val::Bool(x), INVALID_REGISTER) => reg[inst.dst] = Val::Bool(!x),
                 (_, INVALID_REGISTER) => return Err(ExecError::Invalid("Not should not have a target".to_owned())),
                 (x, _) => return Err(ExecError::Type(inst.verb, type_of(x)))
             },
-            Verb::And | Verb::Or | Verb::Xor => match (frame[inst.src], frame[inst.tgt]) {
-                (Val::Integer(x), Val::Integer(y)) => frame[inst.dst] = run_integer_verb(inst.verb, x, y).unwrap(),
-                (Val::Bool(x), Val::Bool(y)) => frame[inst.dst] = run_bool_verb(inst.verb, x, y),
+            Verb::And | Verb::Or | Verb::Xor => match (reg[inst.src], reg[inst.tgt]) {
+                (Val::Integer(x), Val::Integer(y)) => reg[inst.dst] = run_integer_verb(inst.verb, x, y).unwrap(),
+                (Val::Bool(x), Val::Bool(y)) => reg[inst.dst] = run_bool_verb(inst.verb, x, y),
                 (Val::Integer(_), y) => return Err(ExecError::Type(inst.verb, type_of(y))),
                 (Val::Bool(_), y) => return Err(ExecError::Type(inst.verb, type_of(y))),
                 (x, _) => return Err(ExecError::Type(inst.verb, type_of(x)))
             },
-            Verb::ShiftLeft | Verb::ShiftRight | Verb::ShiftRightSigned => match (frame[inst.src], frame[inst.tgt]) {
-                (Val::Integer(x), Val::Integer(y)) => frame[inst.dst] = run_integer_verb(inst.verb, x, y).unwrap(),
+            Verb::ShiftLeft | Verb::ShiftRight | Verb::ShiftRightSigned => match (reg[inst.src], reg[inst.tgt]) {
+                (Val::Integer(x), Val::Integer(y)) => reg[inst.dst] = run_integer_verb(inst.verb, x, y).unwrap(),
                 (Val::Integer(_), y) => return Err(ExecError::Type(inst.verb, type_of(y))),
                 (x, _) => return Err(ExecError::Type(inst.verb, type_of(x)))
             },
-            Verb::Equal => match (frame[inst.src], frame[inst.tgt]) {
-                (Val::Integer(x), Val::Integer(y)) => frame[inst.dst] = Val::Bool(x == y),
-                (Val::Imprecise(x), Val::Imprecise(y)) => frame[inst.dst] = Val::Bool(x == y),
-                (Val::Bool(x), Val::Bool(y)) => frame[inst.dst] = Val::Bool(x == y),
-                (Val::Integer(x), Val::Imprecise(y)) => frame[inst.dst] = Val::Bool(x as f64 == y),
-                (Val::Imprecise(x), Val::Integer(y)) => frame[inst.dst] = Val::Bool(x == y as f64),
-                (_, _) => frame[inst.dst] = Val::Bool(false),
+            Verb::Equal => match (reg[inst.src], reg[inst.tgt]) {
+                (Val::Integer(x), Val::Integer(y)) => reg[inst.dst] = Val::Bool(x == y),
+                (Val::Imprecise(x), Val::Imprecise(y)) => reg[inst.dst] = Val::Bool(x == y),
+                (Val::Bool(x), Val::Bool(y)) => reg[inst.dst] = Val::Bool(x == y),
+                (Val::Integer(x), Val::Imprecise(y)) => reg[inst.dst] = Val::Bool(x as f64 == y),
+                (Val::Imprecise(x), Val::Integer(y)) => reg[inst.dst] = Val::Bool(x == y as f64),
+                (_, _) => reg[inst.dst] = Val::Bool(false),
             },
-            Verb::Is => match (frame[inst.src], frame[inst.tgt]) {
-                (Val::Integer(x), Val::Integer(y)) => frame[inst.dst] = Val::Bool(x == y),
+            Verb::Is => match (reg[inst.src], reg[inst.tgt]) {
+                (Val::Integer(x), Val::Integer(y)) => reg[inst.dst] = Val::Bool(x == y),
                 (Val::Imprecise(x), Val::Imprecise(y)) => {
                     if x.is_nan() && y.is_nan() {
-                        frame[inst.dst] = Val::Bool(true)
+                        reg[inst.dst] = Val::Bool(true)
                     } else {
-                        frame[inst.dst] = Val::Bool(x == y)
+                        reg[inst.dst] = Val::Bool(x == y)
                     }
                 },
-                (Val::Bool(x), Val::Bool(y)) => frame[inst.dst] = Val::Bool(x == y),
-                (_, _) => frame[inst.dst] = Val::Bool(false),
+                (Val::Bool(x), Val::Bool(y)) => reg[inst.dst] = Val::Bool(x == y),
+                (_, _) => reg[inst.dst] = Val::Bool(false),
+            },
+            Verb::Load => {
+                assert_eq!(inst.tgt, INVALID_REGISTER);
+                reg[inst.dst] = constants[inst.src];
             }
         }
         pc += 1;
@@ -186,8 +225,8 @@ fn run_instructions(instructions: &[Instruction], frame: &mut [Val]) -> Result<(
 
 #[test]
 fn it_adds() {
-    let func = Function{
-        instructions: vec![
+    let func = Function::from_instructions(
+        &[
             Instruction{
                 verb: Verb::Add,
                 src: 0,
@@ -195,21 +234,21 @@ fn it_adds() {
                 dst: 2,
             }
         ]
-    };
-    let mut frame = vec![
+    );
+    let mut frame = Frame::from_values(&[
         Val::Imprecise(1f64),
         Val::Imprecise(2f64),
         Val::Uncalculated,
-    ];
-    let res = run_instructions(&func.instructions, frame.as_mut_slice());
+    ]);
+    let res = exec_function(&func, &mut frame);
     assert!(res.is_ok());
-    assert_eq!(frame[2], Val::Imprecise(3f64));
+    assert_eq!(frame.reg[2], Val::Imprecise(3f64));
 }
 
 #[test]
 fn it_subtracts() {
-    let func = Function{
-        instructions: vec![
+    let func = Function::from_instructions(
+        &[
             Instruction{
                 verb: Verb::Subtract,
                 src: 0,
@@ -217,21 +256,21 @@ fn it_subtracts() {
                 dst: 2,
             }
         ]
-    };
-    let mut frame = vec![
+    );
+    let mut frame = Frame::from_values(&[
         Val::Integer(1i64),
         Val::Integer(2i64),
         Val::Uncalculated,
-    ];
-    let res = run_instructions(&func.instructions, frame.as_mut_slice());
+    ]);
+    let res = exec_function(&func, &mut frame);
     assert!(res.is_ok());
-    assert_eq!(frame[2], Val::Integer(-1i64));
+    assert_eq!(frame.reg[2], Val::Integer(-1i64));
 }
 
 #[test]
 fn it_errors_on_integer_div_zero() {
-    let func = Function{
-        instructions: vec![
+    let func = Function::from_instructions(
+        &[
             Instruction{
                 verb: Verb::Divide,
                 src: 0,
@@ -239,21 +278,21 @@ fn it_errors_on_integer_div_zero() {
                 dst: 2,
             }
         ]
-    };
-    let mut frame = vec![
+    );
+    let mut frame = Frame::from_values(&[
         Val::Integer(1i64),
         Val::Integer(0i64),
         Val::Uncalculated,
-    ];
-    let res = run_instructions(&func.instructions, frame.as_mut_slice());
+    ]);
+    let res = exec_function(&func, &mut frame);
     assert!(!res.is_ok());
-    assert_eq!(frame[2], Val::Uncalculated);
+    assert_eq!(frame.reg[2], Val::Uncalculated);
 }
 
 #[test]
 fn it_float_div_produces_infinity() {
-    let func = Function{
-        instructions: vec![
+    let func = Function::from_instructions(
+        &[
             Instruction{
                 verb: Verb::Divide,
                 src: 0,
@@ -261,15 +300,15 @@ fn it_float_div_produces_infinity() {
                 dst: 2,
             }
         ]
-    };
-    let mut frame = vec![
+    );
+    let mut frame = Frame::from_values(&[
         Val::Imprecise(1f64),
         Val::Imprecise(0f64),
         Val::Uncalculated,
-    ];
-    let res = run_instructions(&func.instructions, frame.as_mut_slice());
+    ]);
+    let res = exec_function(&func, &mut frame);
     assert!(res.is_ok());
-    if let Val::Imprecise(v) = frame[2] {
+    if let Val::Imprecise(v) = frame.reg[2] {
         assert!(v.is_infinite())
     } else {
         assert!(false)
